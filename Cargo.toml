@@ -1,0 +1,6 @@
+[package]
+name = "contextlib-rs"
+version = "0.1.0"
+authors = ["Ariel De Ocampo <arielmakestuff@gmail.com>"]
+
+[dependencies]
