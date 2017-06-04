@@ -17,6 +17,7 @@
 use std::env::{current_dir, set_current_dir};
 use std::io;
 use std::mem;
+use std::ops::DerefMut;
 use std::path;
 use std::rc::Rc;
 
@@ -25,6 +26,101 @@ use std::rc::Rc;
 // Local imports
 use super::{Context, ContextResult};
 use super::error::{ContextError, ContextErrorType, GenericError};
+
+
+// ===========================================================================
+// DropContext
+// ===========================================================================
+
+
+pub struct DropContext {
+    obj: Option<Box<Drop>>
+}
+
+
+impl DropContext {
+
+    pub fn new<T>(o: T) -> Self
+        where T: Drop + 'static {
+
+        Self { obj: Some(Box::new(o)) }
+    }
+}
+
+
+impl Context for DropContext {
+
+    fn exit(&mut self, err: &ContextResult) -> bool {
+        let mut newval = None;
+        mem::swap(&mut self.obj, &mut newval);
+        if let Some(b) = newval {
+            let b = &*b;
+            drop(b);
+        }
+        match err { _=> false }
+    }
+
+}
+
+
+// ===========================================================================
+// ContextDrop
+// ===========================================================================
+
+
+pub struct ContextDrop {
+    context: Option<Box<Context>>
+}
+
+
+impl ContextDrop {
+
+    pub fn new<T>(o: T) -> Self
+        where T: Context + 'static {
+
+        Self { context: Some(Box::new(o)) }
+    }
+
+}
+
+
+impl Context for ContextDrop {
+
+    fn enter(&mut self) -> ContextResult {
+        match self.context {
+            Some(ref mut b) => {
+                let mut context = b.deref_mut();
+                context.enter()
+            },
+            None => Ok(())
+        }
+    }
+
+    fn exit(&mut self, err: &ContextResult) -> bool {
+        match self.context {
+            Some(ref mut b) => {
+                let mut context = b.deref_mut();
+                match err { _ => context.exit(err) }
+            },
+            None => false
+        }
+    }
+
+}
+
+
+impl Drop for ContextDrop {
+
+    fn drop(&mut self) {
+        let mut newval = None;
+        mem::swap(&mut newval, &mut self.context);
+        if let Some(b) = newval {
+            let newval = &*b;
+            drop(newval);
+        }
+    }
+}
+
 
 
 // ===========================================================================

@@ -30,6 +30,7 @@ pub mod error;
 use self::error::{ContextError};
 
 pub mod util;
+pub mod droputil;
 
 // ===========================================================================
 // Globals
