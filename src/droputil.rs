@@ -14,13 +14,62 @@
 
 
 // Stdlib imports
-use std::env::{current_dir, set_current_dir};
 use std::io;
+use std::ops::DerefMut;
 use std::path;
 
 // Third-party imports
 
 // Local imports
+use super::{Context, ContextResult};
+use super::util;
+
+
+// ===========================================================================
+// DropContext
+// ===========================================================================
+
+
+pub struct DropContext {
+    context: Box<Context>
+}
+
+
+impl DropContext {
+
+    pub fn new<T>(o: T) -> Self
+        where T: Context + 'static {
+
+        Self { context: Box::new(o) }
+    }
+
+}
+
+
+impl Context for DropContext {
+
+    fn enter(&mut self) -> ContextResult {
+        let mut context = self.context.deref_mut();
+        context.enter()
+    }
+
+    fn exit(&mut self, err: &ContextResult) -> bool {
+        let mut context = self.context.deref_mut();
+        match err { _ => context.exit(err) }
+    }
+
+}
+
+
+impl Drop for DropContext {
+
+    fn drop(&mut self) {
+        let mut context = self.context.deref_mut();
+        let err = Ok(());
+        context.exit(&err);
+    }
+}
+
 
 
 // ===========================================================================
@@ -29,43 +78,103 @@ use std::path;
 
 
 pub struct SwitchDir {
-    original_dir: path::PathBuf
+    orig_impl: DropContext
 }
 
 
 impl SwitchDir {
 
     pub fn new(dir: path::PathBuf) -> io::Result<Self> {
-        // Ensure dir is a directory
-        if let false = dir.is_dir() {
-            let errmsg = format!("Not a directory: {}", dir.display());
-            return Err(io::Error::new(io::ErrorKind::NotFound, errmsg));
+        let switcher = util::SwitchDir::new(dir)?;
+        let mut context = DropContext::new(switcher);
+
+        match context.enter() {
+            Err(e) => {
+                let errmsg = format!("{}", e);
+                let err = io::Error::new(io::ErrorKind::Other, errmsg);
+                Err(err)
+            }
+            _ => Ok(Self { orig_impl: context })
         }
-
-        let original_dir = current_dir()?;
-
-        // Don't do anything if the new directory is the same as the current
-        // directory
-        if original_dir == dir {
-            return Ok(Self { original_dir: original_dir });
-        }
-
-        // Change directories
-        set_current_dir(dir.as_path())?;
-
-        Ok(Self { original_dir: original_dir })
     }
+
 }
 
 
-impl Drop for SwitchDir {
+impl Context for SwitchDir {
 
-    // Change back to original directory on drop
-    // If an error occurs, it will be silently ignored
-    fn drop(&mut self) {
-        match set_current_dir(self.original_dir.as_path()) {
-            _ => ()
+    fn enter(&mut self) -> ContextResult {
+        self.orig_impl.enter()
+    }
+
+    fn exit(&mut self, err: &ContextResult) -> bool {
+        self.orig_impl.exit(err)
+    }
+
+}
+
+
+// ===========================================================================
+// Tests
+// ===========================================================================
+
+
+#[cfg(test)]
+mod tests {
+    extern crate chrono;
+    extern crate tempdir;
+
+    // --------------------
+    // Helpers
+    // --------------------
+
+    use self::chrono::prelude::*;
+    use self::tempdir::TempDir;
+    use std::env::current_dir;
+
+    use super::*;
+
+    fn mktempdir() -> TempDir {
+        let dt = UTC::now();
+        let suffix = dt.format("%Y%m%d%H%M%S%.9f");
+        let name = format!("contextlib-rs_test_{}", suffix.to_string());
+        let tmpdir = TempDir::new(&name).unwrap();
+        tmpdir
+    }
+
+    // --------------------
+    // Tests
+    // --------------------
+    #[test]
+    fn droputil_switchdir_changes_dir() {
+        // GIVEN
+        // current directory and a target directory
+        let startdir = current_dir().unwrap();
+        let tmpdir = mktempdir();
+        let newdir = path::PathBuf::from(tmpdir.path());
+
+        assert!(startdir != newdir);
+
+        // WHEN
+        // the new directory is set as a context and switched to
+
+        // THEN
+        // the current directory has changed to the target when under the
+        // context and the current directory is changed back to the original
+        // dir once context ends
+        {
+            let newdir = SwitchDir::new(newdir);
+            match newdir {
+                Ok(_) => assert!(true),
+                _ => assert!(false)
+            }
+            let curdir = current_dir().unwrap();
+            assert_eq!(curdir, tmpdir.path());
         }
+
+        let curdir = current_dir().unwrap();
+        // panic!(format!("{} {}", curdir.display(), startdir.display()));
+        assert_eq!(curdir, startdir);
     }
 }
 

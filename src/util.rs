@@ -17,7 +17,6 @@
 use std::env::{current_dir, set_current_dir};
 use std::io;
 use std::mem;
-use std::ops::DerefMut;
 use std::path;
 use std::rc::Rc;
 
@@ -64,66 +63,6 @@ impl Context for DropContext {
 
 
 // ===========================================================================
-// ContextDrop
-// ===========================================================================
-
-
-pub struct ContextDrop {
-    context: Option<Box<Context>>
-}
-
-
-impl ContextDrop {
-
-    pub fn new<T>(o: T) -> Self
-        where T: Context + 'static {
-
-        Self { context: Some(Box::new(o)) }
-    }
-
-}
-
-
-impl Context for ContextDrop {
-
-    fn enter(&mut self) -> ContextResult {
-        match self.context {
-            Some(ref mut b) => {
-                let mut context = b.deref_mut();
-                context.enter()
-            },
-            None => Ok(())
-        }
-    }
-
-    fn exit(&mut self, err: &ContextResult) -> bool {
-        match self.context {
-            Some(ref mut b) => {
-                let mut context = b.deref_mut();
-                match err { _ => context.exit(err) }
-            },
-            None => false
-        }
-    }
-
-}
-
-
-impl Drop for ContextDrop {
-
-    fn drop(&mut self) {
-        let mut newval = None;
-        mem::swap(&mut newval, &mut self.context);
-        if let Some(b) = newval {
-            let newval = &*b;
-            drop(newval);
-        }
-    }
-}
-
-
-
-// ===========================================================================
 // IterContext
 // ===========================================================================
 
@@ -158,6 +97,7 @@ pub trait IterContext: Context + Iterator<Item=ContextResult> {
 pub struct ExitCallback {
     callback: Rc<Fn(&ContextResult) -> bool>
 }
+
 
 impl ExitCallback {
     pub fn new<F>(f: F) -> Self
@@ -373,7 +313,7 @@ mod tests {
     // Tests
     // --------------------
     #[test]
-    fn switchdir_changes_dir() {
+    fn util_switchdir_changes_dir() {
         // GIVEN
         // current directory and a target directory
         let curdir = current_dir().unwrap();
