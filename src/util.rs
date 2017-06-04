@@ -28,16 +28,16 @@ use super::error::{ContextError, ContextErrorType, GenericError};
 
 
 // ===========================================================================
-// DropContext
+// ContextDrop
 // ===========================================================================
 
 
-pub struct DropContext {
+pub struct ContextDrop {
     obj: Option<Box<Drop>>
 }
 
 
-impl DropContext {
+impl ContextDrop {
 
     pub fn new<T>(o: T) -> Self
         where T: Drop + 'static {
@@ -47,7 +47,7 @@ impl DropContext {
 }
 
 
-impl Context for DropContext {
+impl Context for ContextDrop {
 
     fn exit(&mut self, err: &ContextResult) -> bool {
         let mut newval = None;
