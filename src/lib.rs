@@ -15,6 +15,7 @@
 
 // Stdlib imports
 // use std::ops::DerefMut;
+use std::mem;
 use std::rc::Rc;
 
 // Third-party imports
@@ -94,7 +95,7 @@ pub struct ExitCallback {
 
 
 impl ExitCallback {
-    fn new<F>(f: F) -> Self
+    pub fn new<F>(f: F) -> Self
         where F: (Fn(&ContextResult) -> bool) + 'static {
 
         Self { callback: Rc::new(f) }
@@ -135,9 +136,33 @@ impl ExitStack {
         self.stack.push(c);
     }
 
-    // pub fn callback(&mut self) {
+    pub fn remove(&mut self, c: Rc<Context>) {
+        let mut index: Option<usize> = None;
+        for (i, context) in self.stack.iter().enumerate() {
+            if let true = Rc::ptr_eq(context, &c) {
+                index = Some(i);
+                break
+            }
+        }
 
-    // }
+        if let Some(i) = index {
+            self.stack.remove(i);
+        }
+    }
+
+    pub fn callback<F>(&mut self, f: F) -> Rc<Context>
+        where F: (Fn(&ContextResult) -> bool) + 'static {
+
+        let context = Rc::new(ExitCallback::new(f));
+        self.push(context.clone());
+        context
+    }
+
+    pub fn pop_all(&mut self) -> ExitStack {
+        let mut newstack = ExitStack::new();
+        mem::swap(&mut self.stack, &mut newstack.stack);
+        newstack
+    }
 
     fn rollback(&mut self, err: &ContextResult) -> bool {
         let mut handled_error = false;
