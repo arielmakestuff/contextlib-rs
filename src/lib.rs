@@ -14,7 +14,7 @@
 
 
 // Stdlib imports
-use std::ops::DerefMut;
+// use std::ops::DerefMut;
 use std::rc::Rc;
 
 // Third-party imports
@@ -88,9 +88,31 @@ pub fn with<C, B>(context: &mut C, block: B) -> ContextResult
 }
 
 
+pub struct ExitCallback {
+    callback: Rc<Fn(&ContextResult) -> bool>
+}
+
+
+impl ExitCallback {
+    fn new<F>(f: F) -> Self
+        where F: (Fn(&ContextResult) -> bool) + 'static {
+
+        Self { callback: Rc::new(f) }
+    }
+}
+
+
+impl Context for ExitCallback {
+    fn exit(&mut self, err: &ContextResult) -> bool {
+        let cb = self.callback.clone();
+        cb(err)
+    }
+}
+
+
 
 pub struct ExitStack {
-    stack: Vec<Box<Rc<Context>>>,
+    stack: Vec<Rc<Context>>,
 }
 
 
@@ -105,8 +127,27 @@ impl ExitStack {
             let mut ctx = Rc::get_mut(&mut ref_ctx).unwrap();
             ctx.enter()?;
         }
-        self.stack.push(Box::new(ref_ctx));
+        self.stack.push(ref_ctx);
         Ok(())
+    }
+
+    pub fn push(&mut self, c: Rc<Context>) {
+        self.stack.push(c);
+    }
+
+    // pub fn callback(&mut self) {
+
+    // }
+
+    fn rollback(&mut self, err: &ContextResult) -> bool {
+        let mut handled_error = false;
+        for mut rc in self.stack.iter_mut().rev() {
+            let mut ctx = Rc::get_mut(&mut rc).unwrap();
+            if let true = ctx.exit(err) {
+                handled_error = true;
+            }
+        }
+        handled_error
     }
 }
 
@@ -114,9 +155,8 @@ impl ExitStack {
 impl Context for ExitStack {
     fn exit(&mut self, err: &ContextResult) -> bool {
         let mut handled_error = false;
-        for boxed_rc in self.stack.iter_mut().rev() {
-            let mut ctxrc = boxed_rc.deref_mut();
-            let mut ctx = Rc::get_mut(&mut ctxrc).unwrap();
+        for mut rc in self.stack.iter_mut().rev() {
+            let mut ctx = Rc::get_mut(&mut rc).unwrap();
             if let true = ctx.exit(err) {
                 handled_error = true;
             }
