@@ -316,11 +316,11 @@ mod tests {
     fn util_switchdir_changes_dir() {
         // GIVEN
         // current directory and a target directory
-        let curdir = current_dir().unwrap();
+        let startdir = current_dir().unwrap();
         let tmpdir = mktempdir();
         let newdir = path::PathBuf::from(tmpdir.path());
 
-        assert!(curdir != newdir);
+        assert!(startdir != newdir);
 
         // WHEN
         // the new directory is set as a context
@@ -328,13 +328,18 @@ mod tests {
 
         // THEN
         // the current directory has changed to the target when under the
-        // context and the current directory is changed back to the original
-        // dir once context ends
+        // context
         with(&mut newdir, |_| {
             let curdir = current_dir().unwrap();
             assert_eq!(curdir, tmpdir.path());
             Ok(())
         }).unwrap();
+
+        // AND THEN
+        // the current directory is changed back to the original dir once
+        // context ends
+        let curdir = current_dir().unwrap();
+        assert_eq!(curdir, startdir);
     }
 }
 
