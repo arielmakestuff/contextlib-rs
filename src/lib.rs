@@ -174,19 +174,19 @@ impl ExitStack {
         }
         handled_error
     }
+
+    pub fn close(&mut self) {
+        let err = Ok(());
+        self.rollback(&err);
+    }
 }
 
 
 impl Context for ExitStack {
     fn exit(&mut self, err: &ContextResult) -> bool {
-        let mut handled_error = false;
-        for mut rc in self.stack.iter_mut().rev() {
-            let mut ctx = Rc::get_mut(&mut rc).unwrap();
-            if let true = ctx.exit(err) {
-                handled_error = true;
-            }
-        }
-        handled_error
+        let ret = self.rollback(err);
+        self.stack = Vec::new();
+        ret
     }
 }
 
