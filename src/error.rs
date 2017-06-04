@@ -101,7 +101,7 @@ impl<E: Debug + Display> error::Error for Error<E> {
 
 #[derive(Debug)]
 pub enum ContextErrorType {
-    IterEnterError,
+    EnterError,
     Other
 }
 
