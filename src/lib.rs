@@ -15,8 +15,6 @@
 
 // Stdlib imports
 // use std::ops::DerefMut;
-use std::mem;
-use std::rc::Rc;
 
 // Third-party imports
 
@@ -29,8 +27,9 @@ use std::rc::Rc;
 
 
 pub mod error;
-use self::error::{ContextError, ContextErrorType, GenericError};
+use self::error::{ContextError};
 
+pub mod util;
 
 // ===========================================================================
 // Globals
@@ -54,26 +53,9 @@ pub trait Context {
 }
 
 
-pub trait IterContext: Context + Iterator<Item=ContextResult> {
-
-    fn enter(&mut self) -> ContextResult {
-        match self.next() {
-            Some(result) => result,
-            None => {
-                let err = ContextError::new(ContextErrorType::IterEnterError,
-                                            "None returned on enter");
-                Err(err)
-            }
-        }
-    }
-
-    fn exit(&mut self, err: &ContextResult) -> bool {
-        match self.next() {
-            None => match err { _ => false },
-            Some(_) => panic!("Context Iterator returned more than 1 value")
-        }
-    }
-}
+// ===========================================================================
+// with
+// ===========================================================================
 
 
 pub fn with<C, B>(context: &mut C, block: B) -> ContextResult
@@ -89,107 +71,6 @@ pub fn with<C, B>(context: &mut C, block: B) -> ContextResult
 }
 
 
-pub struct ExitCallback {
-    callback: Rc<Fn(&ContextResult) -> bool>
-}
-
-
-impl ExitCallback {
-    pub fn new<F>(f: F) -> Self
-        where F: (Fn(&ContextResult) -> bool) + 'static {
-
-        Self { callback: Rc::new(f) }
-    }
-}
-
-
-impl Context for ExitCallback {
-    fn exit(&mut self, err: &ContextResult) -> bool {
-        let cb = self.callback.clone();
-        cb(err)
-    }
-}
-
-
-pub struct ExitStack {
-    stack: Vec<Rc<Context>>,
-}
-
-
-impl ExitStack {
-    pub fn new() -> Self {
-        Self { stack: Vec::new() }
-    }
-
-    pub fn enter_context(&mut self, c: Rc<Context>) -> ContextResult {
-        let mut ref_ctx = c.clone();
-        {
-            let mut ctx = Rc::get_mut(&mut ref_ctx).unwrap();
-            ctx.enter()?;
-        }
-        self.stack.push(ref_ctx);
-        Ok(())
-    }
-
-    pub fn push(&mut self, c: Rc<Context>) {
-        self.stack.push(c);
-    }
-
-    pub fn remove(&mut self, c: Rc<Context>) {
-        let mut index: Option<usize> = None;
-        for (i, context) in self.stack.iter().enumerate() {
-            if let true = Rc::ptr_eq(context, &c) {
-                index = Some(i);
-                break
-            }
-        }
-
-        if let Some(i) = index {
-            self.stack.remove(i);
-        }
-    }
-
-    pub fn callback<F>(&mut self, f: F) -> Rc<Context>
-        where F: (Fn(&ContextResult) -> bool) + 'static {
-
-        let context = Rc::new(ExitCallback::new(f));
-        self.push(context.clone());
-        context
-    }
-
-    pub fn pop_all(&mut self) -> ExitStack {
-        let mut newstack = ExitStack::new();
-        mem::swap(&mut self.stack, &mut newstack.stack);
-        newstack
-    }
-
-    fn rollback(&mut self, err: &ContextResult) -> bool {
-        let mut handled_error = false;
-        for mut rc in self.stack.iter_mut().rev() {
-            let mut ctx = Rc::get_mut(&mut rc).unwrap();
-            if let true = ctx.exit(err) {
-                handled_error = true;
-            }
-        }
-        handled_error
-    }
-
-    pub fn close(&mut self) {
-        let err = Ok(());
-        self.rollback(&err);
-    }
-}
-
-
-impl Context for ExitStack {
-    fn exit(&mut self, err: &ContextResult) -> bool {
-        let ret = self.rollback(err);
-        self.stack = Vec::new();
-        ret
-    }
-}
-
-
 // ===========================================================================
 // Unit tests
 // ===========================================================================
@@ -197,13 +78,11 @@ impl Context for ExitStack {
 
 #[cfg(test)]
 mod tests {
-
-    // use super::{Context, ContextResult, with, ContextError, ContextErrorType};
     use super::*;
-    use super::error::{ContextErrorType, GenericError};
 
     #[test]
-    fn simple() {
+    fn example() {
+        // GIVEN: A new context named Temp
         pub struct Temp {
             orig: u8,
             val: u8,
@@ -227,13 +106,18 @@ mod tests {
             }
         }
 
+        // WHEN:
+        // Temp context is entered
         let mut t = Temp::new();
         assert_eq!(t.val, 0);
 
         let result = with(&mut t, |t| {
             assert_eq!(t.val, 42);
-            Err(ContextError::new(ContextErrorType::Other, "Y U get Err?!"))
+            Ok(())
         });
+
+        // THEN: the context value is set to 42 and the context value is set
+        // back to 0 when the context ends
         match result {
             Ok(()) => assert_eq!(t.val, 0),
             Err(err) => {

@@ -4,3 +4,7 @@ version = "0.1.0"
 authors = ["Ariel De Ocampo <arielmakestuff@gmail.com>"]
 
 [dependencies]
+
+[dev-dependencies]
+tempdir = "0.3.5"
+chrono = "0.3"
