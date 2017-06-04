@@ -111,7 +111,6 @@ impl Context for ExitCallback {
 }
 
 
-
 pub struct ExitStack {
     stack: Vec<Rc<Context>>,
 }
