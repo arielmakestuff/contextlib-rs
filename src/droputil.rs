@@ -155,25 +155,26 @@ mod tests {
 
         assert!(startdir != newdir);
 
-        // WHEN
-        // the new directory is set as a context and switched to
-
-        // THEN
-        // the current directory has changed to the target when under the
-        // context and the current directory is changed back to the original
-        // dir once context ends
         {
+            // WHEN
+            // the new directory is set as a context and switched to
             let newdir = SwitchDir::new(newdir);
             match newdir {
                 Ok(_) => assert!(true),
                 _ => assert!(false)
             }
+
+            // THEN
+            // the current directory has changed to the target when under the
+            // context
             let curdir = current_dir().unwrap();
             assert_eq!(curdir, tmpdir.path());
         }
 
+        // AND THEN
+        // the current directory is changed back to the original dir once
+        // context ends
         let curdir = current_dir().unwrap();
-        // panic!(format!("{} {}", curdir.display(), startdir.display()));
         assert_eq!(curdir, startdir);
     }
 }
